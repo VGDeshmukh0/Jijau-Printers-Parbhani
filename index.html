@@ -2606,25 +2606,25 @@ function saveRates() {
 // ============================================================
 function downloadOrdersCsvFallback(examTypes, data, singleExam) {
   const rows = [[
-    'Academic Year', 'Exam Type', 'School Name', 'Place', 'Head Name', 'Mobile',
-    'Class', 'Marathi Medium', 'Semi Medium', 'Sanskrit', 'Hindi', 'Class Total', 'Amount (INR)'
+    'शैक्षणिक वर्ष', 'परीक्षेचा प्रकार', 'अ.क्र.', 'शाळेचे नाव', 'ठिकाण',
+    'वर्ग', 'मराठी मध्यम', 'सेमी', 'हिंदी', 'संस्कृत', 'एकूण पेपर', 'रक्कम (₹)'
   ]];
   examTypes.forEach(et => {
+    let sr = 1;
     (data.orders || []).filter(o => o.examType === et).forEach(o => {
       Object.entries(o.classData || {}).forEach(([cls, d]) => {
         if ((d.mm || 0) || (d.sm || 0) || (d.sk || 0) || (d.hi || 0) || (d.total || 0)) {
           rows.push([
             currentYear,
             et,
+            sr++,
             o.schoolName || '',
             o.place || '',
-            o.headName || '',
-            o.mobile || '',
-            `Class ${cls}`,
+            `वर्ग ${cls}`,
             d.mm || 0,
             d.sm || 0,
-            d.sk || 0,
             d.hi || 0,
+            d.sk || 0,
             d.total || 0,
             d.classAmount || 0
           ]);
@@ -2663,23 +2663,11 @@ function exportExcel(singleExam) {
     const wb = (XLSX.utils && typeof XLSX.utils.book_new === 'function')
       ? XLSX.utils.book_new()
       : { SheetNames: [], Sheets: {} };
+
     const rowLabels = ['एकूण', 'मराठी मध्यम', 'सेमी', 'हिंदी', 'संस्कृत'];
 
-    const fills = {
-      title:  { fgColor: { rgb: '0D1B3E' } },
-      hdr:    { fgColor: { rgb: '1A237E' } },
-      cls:    { fgColor: { rgb: 'FF6B00' } },
-      sr:     { fgColor: { rgb: '283593' } },
-      nmEven: { fgColor: { rgb: 'FFFFFF' } },
-      nmOdd:  { fgColor: { rgb: 'EEF2FF' } },
-      rows: [
-        { fgColor: { rgb: 'FFE0B2' } },
-        { fgColor: { rgb: 'C8E6C9' } },
-        { fgColor: { rgb: 'BBDEFB' } },
-        { fgColor: { rgb: 'FFF9C4' } },
-        { fgColor: { rgb: 'E1BEE7' } }
-      ]
-    };
+    const fillWhite = { fgColor: { rgb: 'FFFFFF' } };
+    const fillHdr   = { fgColor: { rgb: 'F2F4F8' } };
 
     const borderThin = {
       top:    { style: 'thin', color: { rgb: '000000' } },
@@ -2688,14 +2676,24 @@ function exportExcel(singleExam) {
       right:  { style: 'thin', color: { rgb: '000000' } }
     };
 
-    const fontWhiteBold = { name: 'Arial', sz: 11, bold: true, color: { rgb: 'FFFFFF' } };
-    const fontTitle     = { name: 'Arial', sz: 14, bold: true, color: { rgb: 'FFFFFF' } };
-    const fontNormal    = { name: 'Arial', sz: 11, bold: false, color: { rgb: '000000' } };
-    const fontBold      = { name: 'Arial', sz: 11, bold: true, color: { rgb: '000000' } };
+    const fontTitle  = { name: 'Arial', sz: 15, bold: true, color: { rgb: '000000' } };
+    const fontHdr    = { name: 'Arial', sz: 11, bold: true, color: { rgb: '000000' } };
+    const fontNormal = { name: 'Arial', sz: 11, bold: false, color: { rgb: '000000' } };
+    const fontBold   = { name: 'Arial', sz: 11, bold: true, color: { rgb: '000000' } };
 
-    const numVal = (val) => {
+    const hasAnyVal = (cd, cls) => {
+      const c = cd && cd[cls];
+      if (!c) return false;
+      return (Number(c.mm) || 0) !== 0 || (Number(c.sm) || 0) !== 0 ||
+             (Number(c.hi) || 0) !== 0 || (Number(c.sk) || 0) !== 0 ||
+             (Number(c.total) || 0) !== 0;
+    };
+
+    const cellNumOrBlank = (val, showZeroIfActive, isActive) => {
       const n = Number(val);
-      return (!isNaN(n) && n !== 0) ? n : '';
+      if (!isNaN(n) && n !== 0) return n;
+      if (showZeroIfActive && isActive) return 0;
+      return '';
     };
 
     const usedNames = new Set();
@@ -2715,53 +2713,78 @@ function exportExcel(singleExam) {
 
       const ws = {};
       const merges = [];
+      const rowHeights = [];
 
-      // Row 0 (Excel Row 1): Title + Year
+      // Row 0 (Excel Row 1): Title matching sample image
       ws['A1'] = {
-        v: `${examType}   |   ${currentYear}`,
+        v: `${examType} ${currentYear} ( All Paper school List )`,
         t: 's',
         s: {
-          fill: fills.title,
+          fill: fillWhite,
           font: fontTitle,
           alignment: { horizontal: 'center', vertical: 'center' },
           border: borderThin
         }
       };
       for (let c = 1; c < 13; c++) {
-        const addr = XLSX.utils.encode_cell({ r: 0, c });
-        ws[addr] = { v: '', t: 's', s: { fill: fills.title, border: borderThin } };
+        ws[XLSX.utils.encode_cell({ r: 0, c })] = {
+          v: '',
+          t: 's',
+          s: { fill: fillWhite, border: borderThin }
+        };
       }
       merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } });
+      rowHeights[0] = { hpt: 30 };
 
-      // Row 1 & Row 2 (Excel Row 2 & 3): Headers
-      ws['A2'] = { v: 'अ.क्र.', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin } };
-      ws['A3'] = { v: '', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, border: borderThin } };
+      // Row 1 & Row 2 (Excel Row 2 & 3): Headers matching sample image
+      ws['A2'] = {
+        v: 'अ.\nक्र.',
+        t: 's',
+        s: { fill: fillHdr, font: fontHdr, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin }
+      };
+      ws['A3'] = { v: '', t: 's', s: { fill: fillHdr, font: fontHdr, border: borderThin } };
       merges.push({ s: { r: 1, c: 0 }, e: { r: 2, c: 0 } });
 
-      ws['B2'] = { v: 'शाळेचे नाव', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin } };
-      ws['B3'] = { v: '', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, border: borderThin } };
+      ws['B2'] = {
+        v: 'शाळेचे नाव',
+        t: 's',
+        s: { fill: fillHdr, font: fontHdr, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin }
+      };
+      ws['B3'] = { v: '', t: 's', s: { fill: fillHdr, font: fontHdr, border: borderThin } };
       merges.push({ s: { r: 1, c: 1 }, e: { r: 2, c: 1 } });
 
-      ws['C2'] = { v: 'मध्यम / एकूण', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin } };
-      ws['C3'] = { v: '', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, border: borderThin } };
+      ws['C2'] = {
+        v: 'मध्यम /\nएकूण',
+        t: 's',
+        s: { fill: fillHdr, font: fontHdr, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin }
+      };
+      ws['C3'] = { v: '', t: 's', s: { fill: fillHdr, font: fontHdr, border: borderThin } };
       merges.push({ s: { r: 1, c: 2 }, e: { r: 2, c: 2 } });
 
-      ws['D2'] = { v: 'वर्ग', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin } };
+      ws['D2'] = {
+        v: 'वर्ग',
+        t: 's',
+        s: { fill: fillHdr, font: fontHdr, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+      };
       for (let c = 4; c < 13; c++) {
-        const addr = XLSX.utils.encode_cell({ r: 1, c });
-        ws[addr] = { v: '', t: 's', s: { fill: fills.hdr, border: borderThin } };
+        ws[XLSX.utils.encode_cell({ r: 1, c })] = {
+          v: '',
+          t: 's',
+          s: { fill: fillHdr, border: borderThin }
+        };
       }
       merges.push({ s: { r: 1, c: 3 }, e: { r: 1, c: 12 } });
+      rowHeights[1] = { hpt: 22 };
 
       for (let cls = 1; cls <= 10; cls++) {
         const colIdx = 2 + cls;
-        const addr = XLSX.utils.encode_cell({ r: 2, c: colIdx });
-        ws[addr] = {
+        ws[XLSX.utils.encode_cell({ r: 2, c: colIdx })] = {
           v: cls,
           t: 'n',
-          s: { fill: fills.cls, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+          s: { fill: fillHdr, font: fontHdr, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
         };
       }
+      rowHeights[2] = { hpt: 20 };
 
       let currentRow = 3;
 
@@ -2769,27 +2792,29 @@ function exportExcel(singleExam) {
         orders.forEach((o, idx) => {
           const cd = o.classData || {};
           const startRow = currentRow;
-          const nmFill = (idx % 2 === 0) ? fills.nmEven : fills.nmOdd;
 
           for (let li = 0; li < 5; li++) {
             const rIdx = currentRow + li;
-            const rowFill = fills.rows[li];
             const isTotalRow = (li === 0);
+            rowHeights[rIdx] = { hpt: 20 };
 
             if (li === 0) {
               ws[XLSX.utils.encode_cell({ r: rIdx, c: 0 })] = {
                 v: idx + 1,
                 t: 'n',
-                s: { fill: fills.sr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+                s: { fill: fillWhite, font: fontNormal, alignment: { horizontal: 'center', vertical: 'top' }, border: borderThin }
               };
+              const schoolFullName = o.place
+                ? `${o.schoolName || ''} ${o.place}`.trim()
+                : (o.schoolName || '');
               ws[XLSX.utils.encode_cell({ r: rIdx, c: 1 })] = {
-                v: o.schoolName || '',
+                v: schoolFullName,
                 t: 's',
-                s: { fill: nmFill, font: fontBold, alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: borderThin }
+                s: { fill: fillWhite, font: fontNormal, alignment: { horizontal: 'left', vertical: 'top', wrapText: true }, border: borderThin }
               };
               for (let k = 1; k < 5; k++) {
-                ws[XLSX.utils.encode_cell({ r: startRow + k, c: 0 })] = { v: '', t: 's', s: { fill: fills.sr, border: borderThin } };
-                ws[XLSX.utils.encode_cell({ r: startRow + k, c: 1 })] = { v: '', t: 's', s: { fill: nmFill, border: borderThin } };
+                ws[XLSX.utils.encode_cell({ r: startRow + k, c: 0 })] = { v: '', t: 's', s: { fill: fillWhite, border: borderThin } };
+                ws[XLSX.utils.encode_cell({ r: startRow + k, c: 1 })] = { v: '', t: 's', s: { fill: fillWhite, border: borderThin } };
               }
               merges.push({ s: { r: startRow, c: 0 }, e: { r: startRow + 4, c: 0 } });
               merges.push({ s: { r: startRow, c: 1 }, e: { r: startRow + 4, c: 1 } });
@@ -2798,22 +2823,30 @@ function exportExcel(singleExam) {
             ws[XLSX.utils.encode_cell({ r: rIdx, c: 2 })] = {
               v: rowLabels[li],
               t: 's',
-              s: { fill: rowFill, font: isTotalRow ? fontBold : fontNormal, alignment: { horizontal: 'left', vertical: 'center' }, border: borderThin }
+              s: { fill: fillWhite, font: isTotalRow ? fontBold : fontNormal, alignment: { horizontal: 'left', vertical: 'center' }, border: borderThin }
             };
 
             for (let cls = 1; cls <= 10; cls++) {
               const colIdx = 2 + cls;
+              const active = hasAnyVal(cd, cls);
               let rawVal = '';
-              if (li === 0) rawVal = numVal(cd[cls]?.total);
-              else if (li === 1) rawVal = numVal(cd[cls]?.mm);
-              else if (li === 2) rawVal = numVal(cd[cls]?.sm);
-              else if (li === 3) rawVal = (cls >= 8) ? numVal(cd[cls]?.hi) : '';
-              else if (li === 4) rawVal = (cls >= 8) ? numVal(cd[cls]?.sk) : '';
+
+              if (li === 0) {
+                rawVal = cellNumOrBlank(cd[cls]?.total, false, active);
+              } else if (li === 1) {
+                rawVal = cellNumOrBlank(cd[cls]?.mm, true, active);
+              } else if (li === 2) {
+                rawVal = cellNumOrBlank(cd[cls]?.sm, true, active);
+              } else if (li === 3) {
+                rawVal = (cls >= 8 && (Number(cd[cls]?.hi) || 0) !== 0) ? Number(cd[cls]?.hi) : '';
+              } else if (li === 4) {
+                rawVal = (cls >= 8 && (Number(cd[cls]?.sk) || 0) !== 0) ? Number(cd[cls]?.sk) : '';
+              }
 
               ws[XLSX.utils.encode_cell({ r: rIdx, c: colIdx })] = {
                 v: rawVal,
                 t: (typeof rawVal === 'number') ? 'n' : 's',
-                s: { fill: rowFill, font: isTotalRow ? fontBold : fontNormal, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+                s: { fill: fillWhite, font: isTotalRow ? fontBold : fontNormal, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
               };
             }
           }
@@ -2821,31 +2854,28 @@ function exportExcel(singleExam) {
         });
       } else {
         ws[XLSX.utils.encode_cell({ r: currentRow, c: 0 })] = {
-          v: 'या exam साठी orders नाहीत',
+          v: 'या परीक्षेसाठी कोणतीही नोंद (Order) उपलब्ध नाही',
           t: 's',
-          s: { font: fontNormal, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+          s: { fill: fillWhite, font: fontNormal, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
         };
         for (let c = 1; c < 13; c++) {
-          ws[XLSX.utils.encode_cell({ r: currentRow, c })] = { v: '', t: 's', s: { border: borderThin } };
+          ws[XLSX.utils.encode_cell({ r: currentRow, c })] = { v: '', t: 's', s: { fill: fillWhite, border: borderThin } };
         }
         merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 12 } });
+        rowHeights[currentRow] = { hpt: 24 };
         currentRow += 1;
       }
 
       ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(currentRow - 1, 3), c: 12 } });
       ws['!merges'] = merges;
       ws['!cols'] = [
-        { wch: 8 },
-        { wch: 28 },
-        { wch: 16 },
-        { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
-        { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }
+        { wch: 6 },
+        { wch: 30 },
+        { wch: 15 },
+        { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 },
+        { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 }
       ];
-      ws['!rows'] = [
-        { hpt: 28 },
-        { hpt: 22 },
-        { hpt: 22 }
-      ];
+      ws['!rows'] = rowHeights;
 
       // A4 paper setup (paperSize: 9 = A4, fit to 1 page wide)
       ws['!pageSetup'] = {
@@ -2873,7 +2903,6 @@ function exportExcel(singleExam) {
     try {
       wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
     } catch (styleErr) {
-      // Fallback without cellStyles if xlsx-style fails on any style property
       wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     }
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -2885,7 +2914,7 @@ function exportExcel(singleExam) {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1500);
-    toast('Excel (.xlsx) A4 format exported!', 'success');
+    toast('Excel (.xlsx) A4 sample format exported!', 'success');
   } catch (err) {
     console.error('Export error, using fallback:', err);
     downloadOrdersCsvFallback(examTypes, data, singleExam);
