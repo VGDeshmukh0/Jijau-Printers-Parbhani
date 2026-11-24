@@ -2625,104 +2625,194 @@ function exportExcel(singleExam) {
   const data = getData();
   const examTypes = singleExam ? [singleExam] : EXAM_TYPES;
 
-  const rowColors = ['#FFE0B2','#C8E6C9','#BBDEFB','#FFF9C4','#E1BEE7'];
-  const rowLabels = ['एकूण','मराठी मध्यम','सेमी','हिंदी','संस्कृत'];
+  if (typeof XLSX === 'undefined') {
+    toast('Excel library not loaded. Please check your internet connection and refresh.', 'error');
+    return;
+  }
 
-  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="UTF-8">
-<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>`;
+  const wb = XLSX.utils.book_new();
+  const rowLabels = ['एकूण', 'मराठी मध्यम', 'सेमी', 'हिंदी', 'संस्कृत'];
 
-  examTypes.forEach(et => {
-    html += `<x:ExcelWorksheet><x:Name>${et.substring(0,31)}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`;
-  });
+  // Palette (muted/clean styling for xlsx-style)
+  const fills = {
+    title:  { fgColor: { rgb: '0D1B3E' } },
+    hdr:    { fgColor: { rgb: '1A237E' } },
+    cls:    { fgColor: { rgb: 'FF6B00' } },
+    sr:     { fgColor: { rgb: '283593' } },
+    nmEven: { fgColor: { rgb: 'FFFFFF' } },
+    nmOdd:  { fgColor: { rgb: 'EEF2FF' } },
+    rows: [
+      { fgColor: { rgb: 'FFE0B2' } },
+      { fgColor: { rgb: 'C8E6C9' } },
+      { fgColor: { rgb: 'BBDEFB' } },
+      { fgColor: { rgb: 'FFF9C4' } },
+      { fgColor: { rgb: 'E1BEE7' } }
+    ]
+  };
 
-  html += `</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-<!--[if gte mso 9]><xml>
-<x:ExcelWorkbook>
-  <x:ExcelWorksheets>
-    <x:ExcelWorksheet>
-      <x:WorksheetOptions>
-        <x:FitToPage/>
-        <x:FitWidth>1</x:FitWidth>
-        <x:FitHeight>0</x:FitHeight>
-      </x:WorksheetOptions>
-    </x:ExcelWorksheet>
-  </x:ExcelWorksheets>
-</x:ExcelWorkbook>
-</xml><![endif]-->
-<style>
-  td { font-family: Arial Unicode MS, Arial, sans-serif; font-size: 11pt; border: 1px solid #000000; vertical-align: middle; }
-  .title { background:#0D1B3E; color:#ffffff; font-size:16pt; font-weight:bold; text-align:center; }
-  .year  { background:#FF6B00; color:#ffffff; font-size:16pt; font-weight:bold; text-align:center; }
-  .hdr   { background:#1A237E; color:#ffffff; font-weight:bold; text-align:center; }
-  .cls   { background:#FF6B00; color:#ffffff; font-weight:bold; text-align:center; }
-  .sr    { background:#283593; color:#ffffff; font-weight:bold; text-align:center; }
-  .num   { text-align:center; }
-  .tot   { font-weight:bold; text-align:center; }
-</style></head><body>`;
+  const borderThin = {
+    top:    { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left:   { style: 'thin', color: { rgb: '000000' } },
+    right:  { style: 'thin', color: { rgb: '000000' } }
+  };
+
+  const fontWhiteBold = { name: 'Arial', sz: 11, bold: true, color: { rgb: 'FFFFFF' } };
+  const fontTitle     = { name: 'Arial', sz: 14, bold: true, color: { rgb: 'FFFFFF' } };
+  const fontNormal    = { name: 'Arial', sz: 11, bold: false, color: { rgb: '000000' } };
+  const fontBold      = { name: 'Arial', sz: 11, bold: true, color: { rgb: '000000' } };
+
+  const numVal = (val) => {
+    const n = Number(val);
+    return (!isNaN(n) && n !== 0) ? n : '';
+  };
 
   examTypes.forEach(examType => {
-    const orders = data.orders.filter(o => o.examType === examType);
-    const v = (val) => (val !== undefined && val !== null && val !== 0 && val !== '') ? val : '';
+    const orders = (data.orders || []).filter(o => o.examType === examType);
+    const sheetName = examType.replace(/[\/*?:\[\]]/g, '').substring(0, 31) || 'Orders';
+    const ws = {};
+    const merges = [];
 
-    html += `<table style="border-collapse:collapse">
-    <tr>
-      <td colspan="13" class="title" style="height:36pt">${examType}
-        <span style="float:right;background:#FF6B00;padding:2pt 10pt;border-radius:4pt">${currentYear}</span>
-      </td>
-    </tr>
-    <tr>
-      <td rowspan="2" class="hdr" style="width:45pt">अ.क्र.</td>
-      <td rowspan="2" class="hdr" style="width:170pt">शाळेचे नाव</td>
-      <td rowspan="2" class="hdr" style="width:100pt">मध्यम / एकूण</td>
-      <td colspan="10" class="hdr">वर्ग</td>
-    </tr>
-    <tr>`;
-    for(let c=1;c<=10;c++) html += `<td class="cls" style="width:50pt">${c}</td>`;
-    html += `</tr>`;
+    // Row 0 (Excel Row 1): Title + Year
+    ws['A1'] = {
+      v: `${examType}   |   ${currentYear}`,
+      t: 's',
+      s: {
+        fill: fills.title,
+        font: fontTitle,
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: borderThin
+      }
+    };
+    for (let c = 1; c < 13; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c });
+      ws[addr] = { v: '', t: 's', s: { fill: fills.title, border: borderThin } };
+    }
+    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } });
 
-    if(orders.length > 0) {
+    // Row 1 & Row 2 (Excel Row 2 & 3): Headers
+    ws['A2'] = { v: 'अ.क्र.', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin } };
+    ws['A3'] = { v: '', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, border: borderThin } };
+    merges.push({ s: { r: 1, c: 0 }, e: { r: 2, c: 0 } });
+
+    ws['B2'] = { v: 'शाळेचे नाव', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin } };
+    ws['B3'] = { v: '', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, border: borderThin } };
+    merges.push({ s: { r: 1, c: 1 }, e: { r: 2, c: 1 } });
+
+    ws['C2'] = { v: 'मध्यम / एकूण', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin } };
+    ws['C3'] = { v: '', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, border: borderThin } };
+    merges.push({ s: { r: 1, c: 2 }, e: { r: 2, c: 2 } });
+
+    ws['D2'] = { v: 'वर्ग', t: 's', s: { fill: fills.hdr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin } };
+    for (let c = 4; c < 13; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 1, c });
+      ws[addr] = { v: '', t: 's', s: { fill: fills.hdr, border: borderThin } };
+    }
+    merges.push({ s: { r: 1, c: 3 }, e: { r: 1, c: 12 } });
+
+    for (let cls = 1; cls <= 10; cls++) {
+      const colIdx = 2 + cls; // D=3 for class 1 ... M=12 for class 10
+      const addr = XLSX.utils.encode_cell({ r: 2, c: colIdx });
+      ws[addr] = {
+        v: cls,
+        t: 'n',
+        s: { fill: fills.cls, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+      };
+    }
+
+    let currentRow = 3; // 0-indexed (Excel Row 4)
+
+    if (orders.length > 0) {
       orders.forEach((o, idx) => {
-        const cd = o.classData;
-        const bgNm = idx%2===0 ? '#FFFFFF' : '#EEF2FF';
-        rowLabels.forEach((label, li) => {
-          const bg = rowColors[li];
-          const vals =
-            li===0 ? [1,2,3,4,5,6,7,8,9,10].map(c=>v(cd[c]?.total)) :
-            li===1 ? [1,2,3,4,5,6,7,8,9,10].map(c=>v(cd[c]?.mm)) :
-            li===2 ? [1,2,3,4,5,6,7,8,9,10].map(c=>v(cd[c]?.sm)) :
-            li===3 ? ['','','','','','','',v(cd[8]?.hi),v(cd[9]?.hi),v(cd[10]?.hi)] :
-                     ['','','','','','','',v(cd[8]?.sk),v(cd[9]?.sk),v(cd[10]?.sk)];
-          html += `<tr style="height:18pt">`;
-          if(li===0) {
-            html += `<td rowspan="5" class="sr">${idx+1}</td>`;
-            html += `<td rowspan="5" style="background:${bgNm};font-weight:bold;text-align:left;vertical-align:middle;border:1px solid #000">${o.schoolName}</td>`;
+        const cd = o.classData || {};
+        const startRow = currentRow;
+        const nmFill = (idx % 2 === 0) ? fills.nmEven : fills.nmOdd;
+
+        for (let li = 0; li < 5; li++) {
+          const rIdx = currentRow + li;
+          const rowFill = fills.rows[li];
+          const isTotalRow = (li === 0);
+
+          if (li === 0) {
+            ws[XLSX.utils.encode_cell({ r: rIdx, c: 0 })] = {
+              v: idx + 1,
+              t: 'n',
+              s: { fill: fills.sr, font: fontWhiteBold, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+            };
+            ws[XLSX.utils.encode_cell({ r: rIdx, c: 1 })] = {
+              v: o.schoolName || '',
+              t: 's',
+              s: { fill: nmFill, font: fontBold, alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: borderThin }
+            };
+            for (let k = 1; k < 5; k++) {
+              ws[XLSX.utils.encode_cell({ r: startRow + k, c: 0 })] = { v: '', t: 's', s: { fill: fills.sr, border: borderThin } };
+              ws[XLSX.utils.encode_cell({ r: startRow + k, c: 1 })] = { v: '', t: 's', s: { fill: nmFill, border: borderThin } };
+            }
+            merges.push({ s: { r: startRow, c: 0 }, e: { r: startRow + 4, c: 0 } });
+            merges.push({ s: { r: startRow, c: 1 }, e: { r: startRow + 4, c: 1 } });
           }
-          html += `<td style="background:${bg};text-align:left;font-weight:${li===0?'bold':'normal'};border:1px solid #000">${label}</td>`;
-          vals.forEach(val => {
-            html += `<td class="num" style="background:${bg};border:1px solid #000">${val}</td>`;
-          });
-          html += `</tr>`;
-        });
+
+          ws[XLSX.utils.encode_cell({ r: rIdx, c: 2 })] = {
+            v: rowLabels[li],
+            t: 's',
+            s: { fill: rowFill, font: isTotalRow ? fontBold : fontNormal, alignment: { horizontal: 'left', vertical: 'center' }, border: borderThin }
+          };
+
+          for (let cls = 1; cls <= 10; cls++) {
+            const colIdx = 2 + cls;
+            let rawVal = '';
+            if (li === 0) rawVal = numVal(cd[cls]?.total);
+            else if (li === 1) rawVal = numVal(cd[cls]?.mm);
+            else if (li === 2) rawVal = numVal(cd[cls]?.sm);
+            else if (li === 3) rawVal = (cls >= 8) ? numVal(cd[cls]?.hi) : '';
+            else if (li === 4) rawVal = (cls >= 8) ? numVal(cd[cls]?.sk) : '';
+
+            const cellObj = {
+              v: rawVal,
+              t: (typeof rawVal === 'number') ? 'n' : 's',
+              s: { fill: rowFill, font: isTotalRow ? fontBold : fontNormal, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+            };
+            ws[XLSX.utils.encode_cell({ r: rIdx, c: colIdx })] = cellObj;
+          }
+        }
+        currentRow += 5;
       });
     } else {
-      html += `<tr><td colspan="13" style="text-align:center;padding:10pt">या exam साठी orders नाहीत</td></tr>`;
+      ws[XLSX.utils.encode_cell({ r: currentRow, c: 0 })] = {
+        v: 'या exam साठी orders नाहीत',
+        t: 's',
+        s: { font: fontNormal, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin }
+      };
+      for (let c = 1; c < 13; c++) {
+        ws[XLSX.utils.encode_cell({ r: currentRow, c })] = { v: '', t: 's', s: { border: borderThin } };
+      }
+      merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 12 } });
+      currentRow += 1;
     }
-    html += `</table><br><br>`;
+
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(currentRow - 1, 3), c: 12 } });
+    ws['!merges'] = merges;
+    ws['!cols'] = [
+      { wch: 8 },
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+      { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }
+    ];
+    ws['!rows'] = [
+      { hpt: 28 },
+      { hpt: 22 },
+      { hpt: 22 }
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
   });
 
-  html += `</body></html>`;
-
-  const filename = `Jijau_Orders_${singleExam ? singleExam.replace(/ /g,'_') : 'All'}_${currentYear}.xls`;
-  const blob = new Blob(['﻿'+html], {type:'application/vnd.ms-excel;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast('Excel downloaded!', 'success');
+  const filename = `Jijau_Orders_${singleExam ? singleExam.replace(/ /g, '_') : 'All'}_${currentYear}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast('Excel (.xlsx) exported!', 'success');
 }
+
 // ============================================================
 // MODAL HELPERS
 // ============================================================
