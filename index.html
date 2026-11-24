@@ -1382,9 +1382,10 @@ function buildOrderTable() {
   const smH = (cls) => getRate(selectedExam, cls, 'sm');
 
   // Classes 1-7 Section Visibility
-  const sec1to7Title = document.querySelector('#orderTableSection .section-divider:first-of-type');
+  const dividers = document.querySelectorAll('#orderTableSection .section-divider');
   const sec1to7Table = document.querySelector('#table1to7')?.closest('.order-table-wrapper');
-  if (sec1to7Title) sec1to7Title.style.display = isPractice ? 'none' : 'flex';
+  
+  if (dividers[0]) dividers[0].style.display = isPractice ? 'none' : 'flex';
   if (sec1to7Table) sec1to7Table.style.display = isPractice ? 'none' : 'block';
 
   const tbody17 = document.getElementById('tbody1to7');
@@ -1404,9 +1405,11 @@ function buildOrderTable() {
   }
 
   // Classes 8-10 section (for Practice Exam, only Class 10 is shown)
-  const sec810Title = document.querySelector('#orderTableSection .section-divider:nth-of-type(2) span');
-  if (sec810Title) {
-    sec810Title.textContent = isPractice ? '🎓 Class 10 Practice Exam' : '🔴 Classes 8 to 10';
+  if (dividers[1]) {
+    const spanEl = dividers[1].querySelector('span');
+    if (spanEl) {
+      spanEl.textContent = isPractice ? '🎓 Class 10 Practice Exam' : '🔴 Classes 8 to 10';
+    }
   }
 
   const tbody810 = document.getElementById('tbody8to10');
@@ -1425,6 +1428,13 @@ function buildOrderTable() {
     `;
     tbody810.appendChild(tr);
   });
+
+  // Footer label adjustment for Class 10
+  const tfootLabel = document.querySelector('#table8to10 tfoot td:first-child');
+  if (tfootLabel) {
+    tfootLabel.textContent = isPractice ? '📊 Total (Class 10)' : '📊 Sub Total (8–10)';
+  }
+
   calcTotals();
 }
 
@@ -1434,53 +1444,75 @@ function getVal(inputs, cls, type) {
 }
 
 function calcTotals() {
+  const isPractice = (selectedExam === 'Class 10 Practice Exam');
   const inputs = document.querySelectorAll('#tbody1to7 input, #tbody8to10 input');
   let sumMM17=0, sumSM17=0;
-  CLASSES_LOW.forEach(cls => {
-    const mm = getVal(inputs, cls, 'mm');
-    const sm = getVal(inputs, cls, 'sm');
-    const t = mm + sm;
-    document.getElementById(`total_${cls}`).textContent = t;
-    sumMM17 += mm; sumSM17 += sm;
-  });
-  document.getElementById('subMM1to7').textContent = sumMM17;
-  document.getElementById('subSM1to7').textContent = sumSM17;
-  document.getElementById('subT1to7').textContent = sumMM17 + sumSM17;
+  
+  if (!isPractice) {
+    CLASSES_LOW.forEach(cls => {
+      const mm = getVal(inputs, cls, 'mm');
+      const sm = getVal(inputs, cls, 'sm');
+      const t = mm + sm;
+      const totalEl = document.getElementById(`total_${cls}`);
+      if (totalEl) totalEl.textContent = t;
+      sumMM17 += mm; sumSM17 += sm;
+    });
+    const subMM17El = document.getElementById('subMM1to7');
+    if (subMM17El) subMM17El.textContent = sumMM17;
+    const subSM17El = document.getElementById('subSM1to7');
+    if (subSM17El) subSM17El.textContent = sumSM17;
+    const subT17El = document.getElementById('subT1to7');
+    if (subT17El) subT17El.textContent = sumMM17 + sumSM17;
+  }
 
   let sumMM810=0, sumSM810=0, sumSK810=0, sumHI810=0;
-  CLASSES_HIGH.forEach(cls => {
+  const highClassesToCalc = isPractice ? [10] : CLASSES_HIGH;
+  
+  highClassesToCalc.forEach(cls => {
     const mm = getVal(inputs, cls, 'mm');
     const sm = getVal(inputs, cls, 'sm');
     const sk = getVal(inputs, cls, 'sk');
     const hi = getVal(inputs, cls, 'hi');
     const t = mm + sm; // Total = MM + SM only
-    document.getElementById(`total_${cls}`).textContent = t;
+    const totalEl = document.getElementById(`total_${cls}`);
+    if (totalEl) totalEl.textContent = t;
     sumMM810 += mm; sumSM810 += sm; sumSK810 += sk; sumHI810 += hi;
   });
-  document.getElementById('subMM8to10').textContent = sumMM810;
-  document.getElementById('subSM8to10').textContent = sumSM810;
-  document.getElementById('subSK8to10').textContent = sumSK810;
-  document.getElementById('subHI8to10').textContent = sumHI810;
-  document.getElementById('subT8to10').textContent = sumMM810 + sumSM810;
+  
+  const subMM810El = document.getElementById('subMM8to10');
+  if (subMM810El) subMM810El.textContent = sumMM810;
+  const subSM810El = document.getElementById('subSM8to10');
+  if (subSM810El) subSM810El.textContent = sumSM810;
+  const subSK810El = document.getElementById('subSK8to10');
+  if (subSK810El) subSK810El.textContent = sumSK810;
+  const subHI810El = document.getElementById('subHI8to10');
+  if (subHI810El) subHI810El.textContent = sumHI810;
+  const subT810El = document.getElementById('subT8to10');
+  if (subT810El) subT810El.textContent = sumMM810 + sumSM810;
 
   const grand = (sumMM17 + sumSM17) + (sumMM810 + sumSM810);
-  document.getElementById('grandTotalPapers').textContent = grand;
+  const grandEl = document.getElementById('grandTotalPapers');
+  if (grandEl) grandEl.textContent = grand;
 
   // Amount: each class uses its group's MM/SM rate
   let totalAmount = 0;
-  [...CLASSES_LOW, ...CLASSES_HIGH].forEach(cls => {
+  const activeClasses = isPractice ? [10] : [...CLASSES_LOW, ...CLASSES_HIGH];
+  activeClasses.forEach(cls => {
     const mm = getVal(inputs, cls, 'mm');
     const sm = getVal(inputs, cls, 'sm');
     totalAmount += mm * getRate(selectedExam, cls, 'mm');
     totalAmount += sm * getRate(selectedExam, cls, 'sm');
   });
-  document.getElementById('estimatedAmount').textContent = totalAmount.toLocaleString('en-IN');
+  const estEl = document.getElementById('estimatedAmount');
+  if (estEl) estEl.textContent = totalAmount.toLocaleString('en-IN');
 }
 
 function collectOrderData() {
+  const isPractice = (selectedExam === 'Class 10 Practice Exam');
   const inputs = document.querySelectorAll('#tbody1to7 input, #tbody8to10 input');
   const classes = {};
-  [...CLASSES_LOW, ...CLASSES_HIGH].forEach(cls => {
+  const activeClasses = isPractice ? [10] : [...CLASSES_LOW, ...CLASSES_HIGH];
+  activeClasses.forEach(cls => {
     const mm = getVal(inputs, cls, 'mm');
     const sm = getVal(inputs, cls, 'sm');
     const sk = cls >= 8 ? getVal(inputs, cls, 'sk') : 0;
