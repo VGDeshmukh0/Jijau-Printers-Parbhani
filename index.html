@@ -2630,7 +2630,9 @@ function exportExcel(singleExam) {
     return;
   }
 
-  const wb = XLSX.utils.book_new();
+  const wb = (XLSX.utils && typeof XLSX.utils.book_new === 'function')
+    ? XLSX.utils.book_new()
+    : { SheetNames: [], Sheets: {} };
   const rowLabels = ['एकूण', 'मराठी मध्यम', 'सेमी', 'हिंदी', 'संस्कृत'];
 
   // Palette (muted/clean styling for xlsx-style)
@@ -2805,7 +2807,12 @@ function exportExcel(singleExam) {
       { hpt: 22 }
     ];
 
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    if (XLSX.utils && typeof XLSX.utils.book_append_sheet === 'function') {
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    } else {
+      wb.SheetNames.push(sheetName);
+      wb.Sheets[sheetName] = ws;
+    }
   });
 
   const filename = `Jijau_Orders_${singleExam ? singleExam.replace(/ /g, '_') : 'All'}_${currentYear}.xlsx`;
